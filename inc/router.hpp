@@ -1,46 +1,52 @@
 #pragma once
-#include "parser.hpp"
+
 #include <string>
-#include <functional>
+#include <vector>
 #include <map>
+#include <mutex>
 #include <regex>
 
-struct HttpResponse {
+struct HttpRequest {
+    std::string method;
+    std::string path;
     std::string body;
-    std::string contentType = "text/html"; // Default to HTML
-    std::string status = "200 OK";
+    std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> cookies;
+};
 
-    static HttpResponse html(const std::string& html_content, const std::string& status = "200 OK") {
-        return HttpResponse{html_content, "text/html", status};
+struct HttpResponse {
+    std::string status = "200 OK";
+    std::string contentType = "text/html";
+    std::string body;
+    std::map<std::string, std::string> headers;
+    std::vector<std::string> set_cookies;
+
+    void add_cookie(const std::string& name, const std::string& value, const std::string& options = "Path=/; HttpOnly") {
+        set_cookies.push_back(name + "=" + value + "; " + options);
     }
-    static HttpResponse json(const std::string& json_content, const std::string& status = "200 OK") {
-        return HttpResponse{json_content, "application/json", status};
+
+    static HttpResponse html(const std::string& b, const std::string& s = "200 OK") {
+        HttpResponse res; res.body = b; res.status = s; return res;
     }
 };
 
-
-using HandlerFunc = std::function<HttpResponse(const HttpRequest&, const std::smatch&)>;
+struct RouteConfig {
+    std::string method;
+    std::string pathRegex;
+    std::string scriptPath;
+};
 
 class Router {
 public:
-
-    struct RouteEntry{
-        std::string method;
-        std::regex pathRegex;
-        HandlerFunc handler;
-    };
-
-    static void addRoute(const std::string& method, const std::string& path, HandlerFunc handler);
-    static std::string handleRequest(const HttpRequest& request);
+    static void loadConfig();
+    static HttpResponse handleRequest(HttpRequest& req);
     static std::string readFile(const std::string& path);
-private:
-    static std::vector<RouteEntry> dynamicRoutes;
-    static std::string getMimeType(const std::string& path);
-};
+    static void saveSession(std::string sid, std::string user);
+    static std::string getUserFromSession(std::string sid);
 
-#define REGISTER_ROUTE(method, path, funcName) \
-    static bool _reg_##funcName = []() { \
-        Router::addRoute(method, path, funcName); \
-        return true; \
-    }();
+private:
+    static std::vector<RouteConfig> configRoutes;
+    static std::map<std::string, std::string> sessionStore;
+    static std::mutex router_mutex;
+};
 

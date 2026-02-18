@@ -1,96 +1,140 @@
-#include "parser.hpp"
 #include "router.hpp"
+#include "parser.cpp" // Assuming Parser class is here
+#include "logic_engine.cpp" // Assuming LogicEngine class is here
 #include <iostream>
-#include <sys/socket.h>
+#include <sstream>
+#include <thread>
+#include <vector>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <thread> // Required for multi-threading
-#include <mutex>
-#include <arpa/inet.h>
+#include <cstring>
 
-std::mutex cout_mutex;
+// Helper to parse the raw string into an HttpRequest object
+HttpRequest parse_raw_request(const std::string& raw) {
+    HttpRequest req;
+    std::istringstream stream(raw);
+    std::string line;
 
-void log_request(const std::string& ip, const HttpRequest& req, int status){
-    std::lock_guard<std::mutex> lock(cout_mutex);
-    std::cout << "[" << ip << "] " << req.method 
-    << " " << req.path << " - Status: " << status << std::endl;
-}
-
-// This function runs in its own thread for every single client
- 
-void handle_client(int client_fd, std::string client_ip) {
-    std::string raw_request;
-    char buffer[4096];
-    ssize_t bytes_read;
-
-    // 1. Read initial chunk (usually contains all headers + start of body)
-    bytes_read = read(client_fd, buffer, sizeof(buffer));
-    if (bytes_read <= 0) {
-        close(client_fd);
-        return;
+    // 1. Parse Request Line: "GET /profile HTTP/1.1"
+    if (std::getline(stream, line) && !line.empty()) {
+        std::stringstream ss(line);
+        ss >> req.method >> req.path;
     }
-    raw_request.append(buffer, bytes_read);
 
-    // 2. Initial parse to see what we're dealing with
-    HttpRequest req = Parser::parseRequest(raw_request);
-
-    // 3. Check if we have a body to wait for (Mandatory for POST)
-    if (req.headers.count("Content-Length")) {
-        size_t expected_total_body = std::stoul(req.headers["Content-Length"]);
-        
-        // Keep reading until the body we've parsed matches the Content-Length
-        while (req.body.size() < expected_total_body) {
-            bytes_read = read(client_fd, buffer, sizeof(buffer));
-            if (bytes_read <= 0) break; // Connection closed or error
+    // 2. Parse Headers
+    while (std::getline(stream, line) && line != "\r" && !line.empty()) {
+        size_t colon = line.find(':');
+        if (colon != std::string::npos) {
+            std::string key = line.substr(0, colon);
+            std::string value = line.substr(colon + 1);
+            // Trim whitespace
+            value.erase(0, value.find_first_not_of(" "));
+            if (!value.empty() && value.back() == '\r') value.pop_back();
             
-            req.body.append(buffer, bytes_read);
+            req.headers[key] = value;
+
+            // Special handling for Cookies
+            if (key == "Cookie") {
+                std::stringstream css(value);
+                std::string part;
+                while (std::getline(css, part, ';')) {
+                    size_t eq = part.find('=');
+                    if (eq != std::string::npos) {
+                        std::string ck = part.substr(0, eq);
+                        ck.erase(0, ck.find_first_not_of(" "));
+                        req.cookies[ck] = part.substr(eq + 1);
+                    }
+                }
+            }
         }
     }
 
-    // 4. Process the fully assembled request
-    std::string response = Router::handleRequest(req);
+    // 3. Parse Body
+    std::string body;
+    while (std::getline(stream, line)) {
+        body += line + "\n";
+    }
+    req.body = body;
 
-    // 5. Logging and Sending
-    try {
-        // Extract status safely (e.g., "HTTP/1.1 200 OK" -> 200)
-        int status = std::stoi(response.substr(9, 3));
-        log_request(client_ip, req, status);
-    } catch (...) {
-        log_request(client_ip, req, 0); // Fallback for malformed responses
+    return req;
+}
+
+// Helper to convert HttpResponse to raw string
+std::string serialize_response(const HttpResponse& res) {
+    std::string output = "HTTP/1.1 " + res.status + "\r\n";
+    output += "Content-Type: " + res.contentType + "\r\n";
+    output += "Content-Length: " + std::to_string(res.body.size()) + "\r\n";
+
+    for (const auto& [key, val] : res.headers) {
+        output += key + ": " + val + "\r\n";
     }
 
-    send(client_fd, response.c_str(), response.size(), 0);
+    for (const auto& cookie : res.set_cookies) {
+        output += "Set-Cookie: " + cookie + "\r\n";
+    }
+
+    output += "\r\n" + res.body;
+    return output;
+}
+
+void handle_client(int client_fd) {
+    char buffer[8192] = {0};
+    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
+    
+    if (bytes_read > 0) {
+        // Parse raw text into our struct
+        HttpRequest req = parse_raw_request(std::string(buffer));
+        
+        // Pass it to our decoupled Router
+        HttpResponse res = Router::handleRequest(req);
+
+        // Convert struct back to raw text and send
+        std::string raw_res = serialize_response(res);
+        send(client_fd, raw_res.c_str(), raw_res.size(), 0);
+    }
+
     close(client_fd);
 }
 
-
 int main() {
-
-
+    // Initialize our configuration from routes.conf
+    Router::loadConfig();
 
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    
-    // Allow port reuse (prevents "Address already in use" errors on restart)
+    if (server_fd < 0) {
+        perror("Socket failed");
+        return 1;
+    }
+
+    // Set socket options to reuse address (prevents "Address already in use" errors)
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    sockaddr_in addr = {AF_INET, htons(8080), INADDR_ANY};
-    bind(server_fd, (struct sockaddr*)&addr, sizeof(addr));
-    listen(server_fd, 10);
+    sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(8080);
 
-    std::cout << "Multi-threaded server running on port 8080..." << std::endl;
-
-    while (true) {
-        sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
-
-        int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
-        if (client_fd < 0) continue;
-
-        std::string ip_str = inet_ntoa(client_addr.sin_addr);
-        // Create a thread and detach it so it cleans up after itself
-        std::thread(handle_client, client_fd, ip_str).detach();
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        perror("Bind failed");
+        return 1;
     }
 
+    if (listen(server_fd, 10) < 0) {
+        perror("Listen failed");
+        return 1;
+    }
+
+    std::cout << "🚀 Decoupled C++ Server running on port 8080..." << std::endl;
+
+    while (true) {
+        int client_fd = accept(server_fd, nullptr, nullptr);
+        if (client_fd >= 0) {
+            // Spawn a detached thread for every request
+            std::thread(handle_client, client_fd).detach();
+        }
+    }
+
+    close(server_fd);
     return 0;
 }
