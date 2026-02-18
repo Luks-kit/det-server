@@ -9,6 +9,13 @@ struct HttpResponse {
     std::string body;
     std::string contentType = "text/html"; // Default to HTML
     std::string status = "200 OK";
+
+    static HttpResponse html(const std::string& html_content, const std::string& status = "200 OK") {
+        return HttpResponse{html_content, "text/html", status};
+    }
+    static HttpResponse json(const std::string& json_content, const std::string& status = "200 OK") {
+        return HttpResponse{json_content, "application/json", status};
+    }
 };
 
 

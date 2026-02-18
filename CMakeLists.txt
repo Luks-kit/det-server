@@ -12,6 +12,7 @@ add_executable(web_server
     src/parser.cpp 
     src/router.cpp
     src/api_routes.cpp
+    src/template.cpp
 )
 
 # Create a symlink of the service directory in the build directory

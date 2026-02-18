@@ -13,3 +13,8 @@ class Parser {
 public:
     static HttpRequest parseRequest(const std::string& rawData);
 };
+
+class Template {
+public:
+    static std::string render(std::string html, const std::map<std::string, std::string>& data);
+};
