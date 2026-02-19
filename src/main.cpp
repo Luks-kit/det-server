@@ -1,6 +1,6 @@
 #include "router.hpp"
-#include "parser.cpp" // Assuming Parser class is here
-#include "logic_engine.cpp" // Assuming LogicEngine class is here
+#include "parser.hpp" // Assuming Parser class is here
+#include "logic_engine.hpp" // Assuming LogicEngine class is here
 #include <iostream>
 #include <sstream>
 #include <thread>

@@ -1,5 +1,4 @@
 #pragma once
-
 #include <string>
 #include <vector>
 #include <map>
@@ -41,12 +40,12 @@ public:
     static void loadConfig();
     static HttpResponse handleRequest(HttpRequest& req);
     static std::string readFile(const std::string& path);
+    static std::string getMimeType(const std::string& path); // New helper
     static void saveSession(std::string sid, std::string user);
     static std::string getUserFromSession(std::string sid);
 
 private:
     static std::vector<RouteConfig> configRoutes;
-    static std::map<std::string, std::string> sessionStore;
     static std::mutex router_mutex;
 };
 
