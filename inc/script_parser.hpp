@@ -25,11 +25,14 @@ public:
 private:
     std::unique_ptr<ASTNode> parseExpression(Precedence prec);
     std::unique_ptr<ASTNode> parseStatement();
+    std::unique_ptr<ASTNode> parseList();
+    std::unique_ptr<ASTNode> parseObject();
     
     // Pratt helpers
     Token advance() { return tokens[current++]; }
     Token peek() { return tokens[current]; }
     void consume(TokenType type, std::string msg);
+    bool match(TokenType type);
     
     // Binding Power lookup
     Precedence getPrecedence(TokenType type);

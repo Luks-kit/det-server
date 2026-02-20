@@ -75,3 +75,18 @@ public:
         : itemVar(std::move(var)), listName(std::move(list)), body(std::move(b)) {}
     Value reduce(ScriptContext& ctx) override;
 };
+
+// For lists: [1, 2, 3]
+class ListLiteralExpr : public ASTNode {
+public:
+    std::vector<std::unique_ptr<ASTNode>> elements;
+    Value reduce(ScriptContext& ctx) override;
+};
+
+// For objects: {name: "Moses", age: 30}
+class ObjectLiteralExpr : public ASTNode {
+public:
+    // Key is a string, value is an ASTNode (could be a literal, variable, or another list/object)
+    std::map<std::string, std::unique_ptr<ASTNode>> pairs;
+    Value reduce(ScriptContext& ctx) override;
+};

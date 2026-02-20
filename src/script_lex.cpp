@@ -13,7 +13,10 @@ std::vector<Token> ScriptLexer::tokenize() {
         {"for", TokenType::FOR},
         {"end", TokenType::END},
         {"render", TokenType::RENDER},
-        {"redirect", TokenType::REDIRECT}
+        {"redirect", TokenType::REDIRECT},
+        {"save_session", TokenType::SAVE_SESSION},
+        {"add_cookie",   TokenType::ADD_COOKIE},
+        {"set_session",  TokenType::SET_SESSION}
     };
 
     while (!isAtEnd()) {
@@ -85,6 +88,13 @@ std::vector<Token> ScriptLexer::tokenize() {
                 case '/': tokens.push_back({TokenType::SLASH, "/", line}); break;
                 case '(': tokens.push_back({TokenType::LPAREN, "(", line}); break;
                 case ')': tokens.push_back({TokenType::RPAREN, ")", line}); break;
+                case '[': tokens.push_back({TokenType::L_BRACKET, "{", line}); break;
+                case ']': tokens.push_back({TokenType::R_BRACKET, "}", line}); break;
+                case '{': tokens.push_back({TokenType::L_BRACE, "[", line}); break;
+                case '}': tokens.push_back({TokenType::R_BRACE, "]", line}); break;
+                case ':': tokens.push_back({TokenType::COLON, ":", line}); break;
+                case ';': tokens.push_back({TokenType::SEMICOLON, ";", line}); break;
+                case ',': tokens.push_back({TokenType::COMMA, ",", line}); break;
                 default:
                     // Log unknown character or throw error
                     break;

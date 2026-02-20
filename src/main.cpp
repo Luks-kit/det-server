@@ -9,6 +9,38 @@
 #include <unistd.h>
 #include <cstring>
 
+std::string url_decode(const std::string& value) {
+    std::string result;
+    result.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (value[i] == '+') {
+            result += ' ';
+        } else if (value[i] == '%' && i + 2 < value.size()) {
+            std::string hex = value.substr(i + 1, 2);
+            char c = static_cast<char>(std::strtol(hex.c_str(), nullptr, 16));
+            result += c;
+            i += 2;
+        } else {
+            result += value[i];
+        }
+    }
+    return result;
+}
+
+void inject_form_data(const std::string& body, ScriptContext& ctx) {
+    std::stringstream ss(body);
+    std::string pair;
+    while (std::getline(ss, pair, '&')) {
+        size_t pos = pair.find('=');
+        if (pos != std::string::npos) {
+            std::string key = pair.substr(0, pos);
+            std::string val = url_decode(pair.substr(pos + 1));
+            // In your script, you'll access these as form.num1, etc.
+            ctx.vars["form." + key] = Value(val); 
+        }
+    }
+}
+
 // Helper to parse the raw string into an HttpRequest object
 HttpRequest parse_raw_request(const std::string& raw) {
     HttpRequest req;
@@ -41,20 +73,39 @@ HttpRequest parse_raw_request(const std::string& raw) {
                     size_t eq = part.find('=');
                     if (eq != std::string::npos) {
                         std::string ck = part.substr(0, eq);
+                        std::string cv = part.substr(eq + 1);
+                        // Trim BOTH key and value
                         ck.erase(0, ck.find_first_not_of(" "));
-                        req.cookies[ck] = part.substr(eq + 1);
+                        cv.erase(0, cv.find_first_not_of(" "));
+                        req.cookies[ck] = cv;
                     }
                 }
             }
         }
     }
 
-    // 3. Parse Body
-    std::string body;
-    while (std::getline(stream, line)) {
-        body += line + "\n";
+
+  // 3. Parse Body (Safe Implementation)
+    if (req.headers.count("Content-Length")) {
+        try {
+            size_t contentLength = std::stoul(req.headers["Content-Length"]);
+            
+            // Find the start of the body in the stream
+            // stream.tellg() tells us where the header-parser stopped
+            std::string remaining;
+            std::ostringstream oss;
+            oss << stream.rdbuf(); // Grab everything left in the buffer
+            remaining = oss.str();
+
+            if (remaining.size() >= contentLength) {
+                req.body = remaining.substr(0, contentLength);
+            } else {
+                req.body = remaining;
+            }
+        } catch (...) {
+            req.body = ""; 
+        }
     }
-    req.body = body;
 
     return req;
 }
@@ -83,10 +134,11 @@ void handle_client(int client_fd) {
     
     if (bytes_read > 0) {
         // Parse raw text into our struct
-        HttpRequest req = parse_raw_request(std::string(buffer));
+        HttpRequest req = parse_raw_request(std::string(buffer, bytes_read));
         
         // Pass it to our decoupled Router
         HttpResponse res = Router::handleRequest(req);
+
 
         // Convert struct back to raw text and send
         std::string raw_res = serialize_response(res);

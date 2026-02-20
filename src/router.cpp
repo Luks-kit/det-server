@@ -27,7 +27,7 @@ void Router::loadConfig() {
 HttpResponse Router::handleRequest(HttpRequest& req) {
     Logger::log(LogLevel::INFO, req.method + " " + req.path);
 
-    if (!req.cookies.empty()) Logger::log(LogLevel::DEBUG, "Session Cookie found: " + req.cookies["session_id"]);
+    if (!req.cookies.empty()) Logger::log(LogLevel::DEBUG, "Session Cookie found: " + req.cookies["sid"]);
 
       if (req.path.rfind("/static/", 0) == 0) { // starts with /static/
         HttpResponse res;
@@ -36,6 +36,7 @@ HttpResponse Router::handleRequest(HttpRequest& req) {
         Logger::log(LogLevel::INFO, "Serving static file: " + req.path);
         return res;
       }
+
     for (auto& route : configRoutes) {
         std::cout << "Checking against: " << route.method << " " << route.pathRegex << "\n";
         if (req.method == route.method && std::regex_match(req.path, std::regex(route.pathRegex))) {

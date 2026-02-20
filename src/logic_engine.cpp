@@ -41,11 +41,6 @@ void ScriptExecutor::execute(const std::string& path, const HttpRequest& req, Ht
 
         // 5. Execute (The AST traversal)
         Logger::log(LogLevel::INFO, "Executor: Running AST...");
-        std::map<std::string, std::string> s1 = {{"name", "Production-01"}, {"status", "Healthy"}};
-        std::map<std::string, std::string> s2 = {{"name", "Staging-DB"}, {"status", "Maintenance"}};
-        std::map<std::string, std::string> s3 = {{"name", "Auth-Node"}, {"status", "Healthy"}};
-
-        ctx.lists["servers"] = {s1, s2, s3};
         program->reduce(ctx);
         Logger::log(LogLevel::INFO, "Executor: Success.");
 

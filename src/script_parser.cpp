@@ -12,6 +12,7 @@ Precedence ScriptParser::getPrecedence(TokenType type) {
         case TokenType::MINUS:        return TERM;
         case TokenType::STAR:
         case TokenType::SLASH:        return FACTOR;
+
         default:                      return NONE;
     }
 }
@@ -56,7 +57,10 @@ std::unique_ptr<ASTNode> ScriptParser::parseStatement() {
         return std::make_unique<IfStmt>(std::move(condition), std::move(thenBranch), std::move(elseBranch));
     }
 
-    if (peek().type == TokenType::RENDER || peek().type == TokenType::REDIRECT || peek().type == TokenType::SET_SESSION) {
+    if (peek().type == TokenType::RENDER || 
+        peek().type == TokenType::REDIRECT || 
+        peek().type == TokenType::ADD_COOKIE ||
+        peek().type == TokenType::SAVE_SESSION) {
 
         Token cmd = advance();
         std::vector<std::unique_ptr<ASTNode>> args;
@@ -64,10 +68,7 @@ std::unique_ptr<ASTNode> ScriptParser::parseStatement() {
         // Simple heuristic: parse expressions until we hit a keyword or EOF
         // For a more robust version, you'd check for a NewLine token
         while (peek().type != TokenType::EOF_TOKEN && 
-               peek().type != TokenType::END && 
-               peek().type != TokenType::ELSE &&
-               peek().type != TokenType::SET &&
-               peek().type != TokenType::IF) 
+               peek().type != TokenType::SEMICOLON ) 
         { args.push_back(parseExpression(NONE)); }
 
         return std::make_unique<CommandStmt>(cmd.value, std::move(args));
@@ -81,15 +82,35 @@ std::unique_ptr<ASTNode> ScriptParser::parseExpression(Precedence prec) {
     std::unique_ptr<ASTNode> left;
 
     // Prefix (Nud)
-    if (token.type == TokenType::NUMBER) {
-        left = std::make_unique<LiteralExpr>(std::stoi(token.value));
-    } else if (token.type == TokenType::STRING) {
-        left = std::make_unique<LiteralExpr>(token.value);
-    } else if (token.type == TokenType::IDENTIFIER) {
-        left = std::make_unique<VariableExpr>(token.value);
-    } else if (token.type == TokenType::LPAREN) {
-        left = parseExpression(NONE);
-        consume(TokenType::RPAREN, "Expect ')'");
+    switch (token.type) {
+        case TokenType::NUMBER:
+            left = std::make_unique<LiteralExpr>(std::stoi(token.value));
+            break;
+
+        case TokenType::STRING:
+            left = std::make_unique<LiteralExpr>(token.value);
+            break;
+
+        case TokenType::IDENTIFIER:
+            left = std::make_unique<VariableExpr>(token.value);
+            break;
+
+        case TokenType::LPAREN:
+            left = parseExpression(NONE);
+            consume(TokenType::RPAREN, "Expect ')'");
+            break;
+
+        case TokenType::L_BRACKET:
+            left = parseList();
+            break;
+
+        case TokenType::L_BRACE:
+            left = parseObject();
+            break;
+
+        default:
+            // Optional: Handle unexpected tokens or throw an error
+            break;
     }
 
     // Infix (Led)
@@ -108,4 +129,44 @@ void ScriptParser::consume(TokenType type, std::string msg) {
         return;
     }
     throw std::runtime_error("Parser Error: " + msg + " on line " + std::to_string(peek().line));
+}
+
+std::unique_ptr<ASTNode> ScriptParser::parseList() {
+    auto listNode = std::make_unique<ListLiteralExpr>();
+
+    if (peek().type != TokenType::R_BRACKET) {
+        do {
+            // Lists can contain any expression: [1, "two", 1+2, varName]
+            listNode->elements.push_back(parseExpression(Precedence::NONE));
+        } while (match(TokenType::COMMA));
+    }
+
+    consume(TokenType::R_BRACKET, "Expected ']' after list elements");
+    return listNode;
+}
+
+std::unique_ptr<ASTNode> ScriptParser::parseObject() {
+    auto objNode = std::make_unique<ObjectLiteralExpr>();
+
+    if (peek().type != TokenType::R_BRACE) {
+        do {
+            // We expect a literal identifier or string as the key
+            std::string key = advance().value; 
+            consume(TokenType::COLON, "Expected ':' after key");
+            
+            // The value can be any expression, including another object!
+            objNode->pairs[key] = parseExpression(Precedence::NONE);
+        } while (match(TokenType::COMMA));
+    }
+
+    consume(TokenType::R_BRACE, "Expected '}' after object pairs");
+    return objNode;
+}
+
+bool ScriptParser::match(TokenType type) {
+    if (peek().type == type) {
+        advance();
+        return true;
+    }
+    return false;
 }

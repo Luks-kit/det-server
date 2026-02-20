@@ -3,9 +3,10 @@
 #include <vector>
 #include <map>
 #include <memory>
+#include "value.hpp"
 
 struct RenderContext {
-    std::map<std::string, std::string> vars;
+    std::map<std::string, Value> vars;
     // A list is a vector of maps (each map is one 'item')
     std::map<std::string, std::vector<std::map<std::string, std::string>>> lists;
 };

@@ -33,23 +33,48 @@ struct DataValue {
 
 class Value {
 public:
-    // Holds either an int, a string, or a bool
-    std::variant<int, std::string, bool> data;
+
+    std::variant<int, 
+                std::string, 
+                bool,
+                std::vector<Value>,
+                std::map<std::string, Value>,
+                std::monostate> data;
 
     Value() : data(false) {}
     Value(int v) : data(v) {}
     Value(std::string v) : data(v) {}
     Value(bool v) : data(v) {}
+    Value(std::vector<Value> v): data(v) {}
+    Value(std::map<std::string, Value> v): data (v) {}
 
     bool isInt() const { return std::holds_alternative<int>(data); }
     bool isString() const { return std::holds_alternative<std::string>(data); }
 
+
     int asInt() const { return std::get<int>(data); }
-    std::string asString() const { 
-        if (isString()) return std::get<std::string>(data);
-        if (isInt()) return std::to_string(asInt());
-        return std::get<bool>(data) ? "true" : "false";
+    int toInt() const {
+        if (auto* i = std::get_if<int>(&data)) return *i;
+        if (auto* s = std::get_if<std::string>(&data)) {
+            try { return std::stoi(*s); } catch (...) { return 0; }
+        }
+        return 0;
     }
+
+    std::string asString() const {
+        if (auto* s = std::get_if<std::string>(&data)) return *s;
+        if (auto* i = std::get_if<int>(&data)) return std::to_string(*i);
+        if (auto* b = std::get_if<bool>(&data)) return *b ? "true" : "false";
+        if (isList()) return "[List]";
+        if (isObject()) return "[Object]";
+        return "";
+    }
+
+    bool isList() const { return std::holds_alternative<std::vector<Value>>(data);}
+    const std::vector<Value>& asList() const { return std::get<std::vector<Value>>(data);}
+
+    bool isObject() const { return std::holds_alternative<std::map<std::string, Value>>(data);}
+    const std::map<std::string, Value>& asObject() const { return std::get<std::map<std::string, Value>>(data);}
 
     // Example of a "reduce" helper for math
     Value operator+(const Value& other) const {
@@ -90,6 +115,9 @@ public:
         if (std::holds_alternative<bool>(data)) return std::get<bool>(data);
         if (isInt()) return asInt() != 0;
         if (isString()) return !std::get<std::string>(data).empty();
+        if (isList()) return !asList().empty();
+        if (isObject()) return !asObject().empty();
+        if (std::holds_alternative<std::monostate>(data)) return false;
         return false;
     }
 };
