@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "template.hpp"
+#include "logger.hpp"
 #include <sstream>
 #include <algorithm>
 
@@ -20,24 +21,41 @@ std::vector<std::unique_ptr<Node>> TemplateParser::parse(std::string stopTag) {
             std::string varName = trim(input.substr(pos + 2, end - pos - 2));
             nodes.push_back(std::make_unique<VarNode>(varName));
             pos = end + 2;
-        } 
-        else if (input.substr(pos, 2) == "{%") {
+
+        } else if (input.substr(pos, 2) == "{%") {
             size_t end = input.find("%}", pos);
-            std::string content = trim(input.substr(pos + 2, end - pos - 2));
-            
-            if (!stopTag.empty() && content == stopTag) {
-                pos = end + 2;
-                return nodes; // Return control to parent block
+            if (end == std::string::npos) {
+                // Safety: no closing tag, just treat as text or throw
+                nodes.push_back(std::make_unique<TextNode>("{%"));
+                pos += 2;
+                continue;
             }
 
+            std::string content = trim(input.substr(pos + 2, end - pos - 2));
+
+            // CRITICAL FIX START: 
+            // Advance the position PAST the closing '%}' BEFORE recursion
+            pos = end + 2; 
+
+            if (!stopTag.empty() && content == stopTag) {
+                return nodes; // We found our 'endfor' or 'endif'
+            }
+
+            // Now call parseTag. Since pos is advanced, 
+            // the recursive call to parse() will start looking AFTER this tag.
             nodes.push_back(parseTag(content));
-            pos = end + 2;
-        } else {
+            
+            // REMOVE 'pos = end + 2;' from here if it's currently after parseTag
+        }else {
             nodes.push_back(std::make_unique<TextNode>("{"));
             pos++;
         }
     }
-    return nodes;
+    // A simple safety check in parse()
+    if (nodes.size() > 1000) { 
+        Logger::log(LogLevel::ERR, "Template too complex or recursive loop detected!");
+        return nodes; 
+    }
 }
 
 std::unique_ptr<Node> TemplateParser::parseTag(const std::string& content) {
@@ -96,8 +114,14 @@ std::string ForNode::render(const RenderContext& ctx) {
     if (ctx.lists.count(listVar)) {
         for (const auto& item : ctx.lists.at(listVar)) {
             RenderContext loopCtx = ctx;
+            
+            // If the item has a "value" key (common for simple lists)
+            if (item.count("value")) {
+                loopCtx.vars[itemVar] = item.at("value");
+            }
+            // Map sub-properties: user.name, user.id
             for (const auto& [k, v] : item) {
-                loopCtx.vars[itemVar + "." + k] = v; // e.g. "user.name"
+                loopCtx.vars[itemVar + "." + k] = v;
             }
             for (auto& child : children) {
                 result += child->render(loopCtx);

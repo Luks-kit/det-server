@@ -13,7 +13,5 @@ public:
     std::vector<std::unique_ptr<Node>> parse(std::string stopTag = "");
 
 private:
-    std::unique_ptr<Node> parseText();
-    std::unique_ptr<Node> parseVar();
     std::unique_ptr<Node> parseTag(const std::string& content);
 };

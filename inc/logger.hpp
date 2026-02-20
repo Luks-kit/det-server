@@ -1,5 +1,4 @@
-#ifndef LOGGER_HPP
-#define LOGGER_HPP
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -22,7 +21,7 @@ public:
         switch (level) {
             case LogLevel::INFO:  label = "\033[32m[INFO]\033[0m "; break;  // Green
             case LogLevel::WARN:  label = "\033[33m[WARN]\033[0m "; break;  // Yellow
-            case LogLevel::ERR:   label = "\033[31m[ERR ]\033[0m "; break;  // Red
+            case LogLevel::ERR:   label = "\033[31m[FAIL]\033[0m "; break;  // Red
             case LogLevel::DEBUG: label = "\033[36m[DEBG]\033[0m "; break;  // Cyan
         }
 
@@ -30,4 +29,3 @@ public:
     }
 };
 
-#endif

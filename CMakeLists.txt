@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(CppWebServer)
+project(web_server CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -12,7 +12,10 @@ add_executable(web_server
     src/parser.cpp 
     src/router.cpp
     src/template.cpp
+    src/script_lex.cpp
     src/logic_engine.cpp
+    src/script_ast.cpp
+    src/script_parser.cpp
 )
 
 # Create a symlink of the service directory in the build directory

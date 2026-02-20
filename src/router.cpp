@@ -2,10 +2,12 @@
 #include "logic_engine.hpp"
 #include "logger.hpp"
 #include "session_store.hpp"
+#include "script_executor.hpp"
 #include <fstream>
 #include <iostream>
 
 std::vector<RouteConfig> Router::configRoutes;
+std::map<std::string, std::string> SessionStore::sessions;
 std::mutex Router::router_mutex;
 
 void Router::loadConfig() {
@@ -38,7 +40,7 @@ HttpResponse Router::handleRequest(HttpRequest& req) {
         std::cout << "Checking against: " << route.method << " " << route.pathRegex << "\n";
         if (req.method == route.method && std::regex_match(req.path, std::regex(route.pathRegex))) {
             HttpResponse res;
-            LogicEngine::execute(route.scriptPath, req, res);
+            ScriptExecutor::execute(route.scriptPath, req, res);
             return res;
         }
     }

@@ -13,8 +13,9 @@ struct RenderContext {
 class Parser {
 public:
     static std::string urlDecode(const std::string& str);
-
     static std::map<std::string, std::string> parseForm(const std::string& body);
+
+    
 };
 
 struct Node {
