@@ -9,6 +9,57 @@
 #include <unistd.h>
 #include <cstring>
 
+constexpr size_t MAX_REQUEST_SIZE = 10 * 1024 * 1024; // 10MB limit
+
+
+std::string read_full_request(int client_fd) {
+    std::string raw;
+    char buffer[4096];
+
+    // 1️ Read until headers are complete
+    while (raw.find("\r\n\r\n") == std::string::npos) {
+        ssize_t n = read(client_fd, buffer, sizeof(buffer));
+        if (n <= 0) return "";
+        raw.append(buffer, n);
+
+        if (raw.size() > MAX_REQUEST_SIZE) {
+            throw std::runtime_error("Request too large");
+        }
+    }
+
+    // 2️ Split headers and initial body
+    size_t header_end = raw.find("\r\n\r\n");
+    size_t body_start = header_end + 4;
+
+    std::string header_part = raw.substr(0, header_end);
+    std::string body_part   = raw.substr(body_start);
+
+    // 3️ Parse Content-Length
+    size_t content_length = 0;
+
+    std::istringstream header_stream(header_part);
+    std::string line;
+    while (std::getline(header_stream, line)) {
+        if (line.find("Content-Length:") == 0) {
+            content_length = std::stoul(line.substr(15));
+        }
+    }
+
+    // 4️ Read remaining body if needed
+    while (body_part.size() < content_length) {
+        ssize_t n = read(client_fd, buffer, sizeof(buffer));
+        if (n <= 0) break;
+        body_part.append(buffer, n);
+
+        if (body_part.size() > MAX_REQUEST_SIZE) {
+            throw std::runtime_error("Body too large");
+        }
+    }
+
+    // 5️ Reconstruct full request
+    return header_part + "\r\n\r\n" + body_part;
+}
+
 std::string url_decode(const std::string& value) {
     std::string result;
     result.reserve(value.size());
@@ -26,6 +77,8 @@ std::string url_decode(const std::string& value) {
     }
     return result;
 }
+
+
 
 void inject_form_data(const std::string& body, ScriptContext& ctx) {
     std::stringstream ss(body);
@@ -129,21 +182,18 @@ std::string serialize_response(const HttpResponse& res) {
 }
 
 void handle_client(int client_fd) {
-    char buffer[8192] = {0};
-    ssize_t bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-    
-    if (bytes_read > 0) {
-        // Parse raw text into our struct
-        HttpRequest req = parse_raw_request(std::string(buffer, bytes_read));
-        
-        // Pass it to our decoupled Router
-        HttpResponse res = Router::handleRequest(req);
+    std::string raw_request = read_full_request(client_fd);
 
-
-        // Convert struct back to raw text and send
-        std::string raw_res = serialize_response(res);
-        send(client_fd, raw_res.c_str(), raw_res.size(), 0);
+    if (raw_request.empty()) {
+        close(client_fd);
+        return;
     }
+
+    HttpRequest req = parse_raw_request(raw_request);
+    HttpResponse res = Router::handleRequest(req);
+
+    std::string raw_res = serialize_response(res);
+    send(client_fd, raw_res.c_str(), raw_res.size(), 0);
 
     close(client_fd);
 }
